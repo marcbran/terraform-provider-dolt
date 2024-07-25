@@ -69,6 +69,7 @@ func (p *DoltProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 func (p *DoltProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewRepositoryResource,
+		NewTableResource,
 	}
 }
 
