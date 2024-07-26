@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"net/http"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -32,6 +31,8 @@ type RowSetResource struct {
 // RowSetResourceModel describes the resource data model.
 type RowSetResourceModel struct {
 	RepositoryPath types.String `tfsdk:"repository_path"`
+	AuthorName     types.String `tfsdk:"author_name"`
+	AuthorEmail    types.String `tfsdk:"author_email"`
 	TableName      types.String `tfsdk:"table_name"`
 	UniqueColumn   types.String `tfsdk:"unique_column"`
 	Columns        types.List   `tfsdk:"columns"`
@@ -49,6 +50,14 @@ func (r *RowSetResource) Schema(ctx context.Context, req resource.SchemaRequest,
 		Attributes: map[string]schema.Attribute{
 			"repository_path": schema.StringAttribute{
 				MarkdownDescription: "Path to the data repository that holds the row set",
+				Required:            true,
+			},
+			"author_name": schema.StringAttribute{
+				MarkdownDescription: "Author name",
+				Required:            true,
+			},
+			"author_email": schema.StringAttribute{
+				MarkdownDescription: "Author email",
 				Required:            true,
 			},
 			"table_name": schema.StringAttribute{
@@ -125,13 +134,29 @@ func (r *RowSetResource) Create(ctx context.Context, req resource.CreateRequest,
 	multipleValuesString := strings.Join(multipleValues, ", ")
 	query := fmt.Sprintf(`INSERT INTO %s (%s) VALUES %s;`, data.TableName.ValueString(), columnsString, multipleValuesString)
 
+	var stderr strings.Builder
 	cmd := exec.Command("dolt", "sql", "-q", query)
 	cmd.Dir = abs
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = &stderr
 	err = cmd.Run()
 	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s", err))
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s\n\n%s", err, stderr.String()))
 		return
+	}
+
+	{
+		query := fmt.Sprintf("CALL DOLT_COMMIT('-A', '-m', 'Create row set', '--author', '%s <%s>');",
+			data.AuthorName.ValueString(), data.AuthorEmail.ValueString())
+
+		var stderr strings.Builder
+		cmd := exec.Command("dolt", "sql", "-q", query)
+		cmd.Dir = abs
+		cmd.Stderr = &stderr
+		err = cmd.Run()
+		if err != nil {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s\n\n%s", err, stderr.String()))
+			return
+		}
 	}
 
 	tflog.Trace(ctx, "created a resource")
@@ -179,13 +204,29 @@ func (r *RowSetResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	uniqueValuesString := strings.Join(uniqueValues, ", ")
 	query := fmt.Sprintf(`DELETE FROM %s WHERE %s IN (%s);`, data.TableName.ValueString(), data.UniqueColumn.ValueString(), uniqueValuesString)
 
+	var stderr strings.Builder
 	cmd := exec.Command("dolt", "sql", "-q", query)
 	cmd.Dir = abs
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = &stderr
 	err = cmd.Run()
 	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete row set, got error: %s", err))
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete row set, got error: %s\n\n%s", err, stderr.String()))
 		return
+	}
+
+	{
+		query := fmt.Sprintf("CALL DOLT_COMMIT('-A', '-m', 'Create row set', '--author', '%s <%s>');",
+			data.AuthorName.ValueString(), data.AuthorEmail.ValueString())
+
+		var stderr strings.Builder
+		cmd := exec.Command("dolt", "sql", "-q", query)
+		cmd.Dir = abs
+		cmd.Stderr = &stderr
+		err = cmd.Run()
+		if err != nil {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s\n\n%s", err, stderr.String()))
+			return
+		}
 	}
 }
 

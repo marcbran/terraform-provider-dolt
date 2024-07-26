@@ -30,6 +30,8 @@ resource "dolt_repository" "test" {
 
 resource "dolt_table" "test" {
   repository_path = dolt_repository.test.path
+  author_name     = dolt_repository.test.name
+  author_email    = dolt_repository.test.email
 
   name  = "test_table"
   query = <<EOF

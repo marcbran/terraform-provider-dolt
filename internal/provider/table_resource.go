@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -29,6 +30,8 @@ type TableResource struct {
 // TableResourceModel describes the resource data model.
 type TableResourceModel struct {
 	RepositoryPath types.String `tfsdk:"repository_path"`
+	AuthorName     types.String `tfsdk:"author_name"`
+	AuthorEmail    types.String `tfsdk:"author_email"`
 	Name           types.String `tfsdk:"name"`
 	Query          types.String `tfsdk:"query"`
 }
@@ -44,6 +47,14 @@ func (r *TableResource) Schema(ctx context.Context, req resource.SchemaRequest, 
 		Attributes: map[string]schema.Attribute{
 			"repository_path": schema.StringAttribute{
 				MarkdownDescription: "Path to the data repository that holds the table",
+				Required:            true,
+			},
+			"author_name": schema.StringAttribute{
+				MarkdownDescription: "Author name",
+				Required:            true,
+			},
+			"author_email": schema.StringAttribute{
+				MarkdownDescription: "Author email",
 				Required:            true,
 			},
 			"name": schema.StringAttribute{
@@ -98,6 +109,21 @@ func (r *TableResource) Create(ctx context.Context, req resource.CreateRequest, 
 		return
 	}
 
+	{
+		query := fmt.Sprintf("CALL DOLT_COMMIT('-A', '-m', 'Create table \"%s\"', '--author', '%s <%s>');",
+			data.Name.ValueString(), data.AuthorName.ValueString(), data.AuthorEmail.ValueString())
+
+		var stderr strings.Builder
+		cmd := exec.Command("dolt", "sql", "-q", query)
+		cmd.Dir = abs
+		cmd.Stderr = &stderr
+		err = cmd.Run()
+		if err != nil {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s\n\n%s", err, stderr.String()))
+			return
+		}
+	}
+
 	tflog.Trace(ctx, "created a resource")
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -132,15 +158,30 @@ func (r *TableResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 	repositoryPath := data.RepositoryPath.ValueString()
 	abs, err := filepath.Abs(repositoryPath)
 	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create table, got error: %s", err))
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete table, got error: %s", err))
 		return
 	}
 	cmd := exec.Command("dolt", "sql", "-q", "DROP TABLE "+data.Name.ValueString())
 	cmd.Dir = abs
 	err = cmd.Run()
 	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create table, got error: %s", err))
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete table, got error: %s", err))
 		return
+	}
+
+	{
+		query := fmt.Sprintf("CALL DOLT_COMMIT('-A', '-m', 'Create table \"%s\"', '--author', '%s <%s>');",
+			data.Name.ValueString(), data.AuthorName.ValueString(), data.AuthorEmail.ValueString())
+
+		var stderr strings.Builder
+		cmd := exec.Command("dolt", "sql", "-q", query)
+		cmd.Dir = abs
+		cmd.Stderr = &stderr
+		err = cmd.Run()
+		if err != nil {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete table, got error: %s\n\n%s", err, stderr.String()))
+			return
+		}
 	}
 }
 
