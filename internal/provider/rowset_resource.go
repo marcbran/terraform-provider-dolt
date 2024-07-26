@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"net/http"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -115,58 +114,21 @@ func (r *RowSetResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	var columns []string
-	for _, c := range data.Columns.Elements() {
-		column := c.(basetypes.StringValue)
-		columns = append(columns, column.ValueString())
-	}
-	columnsString := strings.Join(columns, ", ")
-	var multipleValues []string
-	for _, vs := range data.Values.Elements() {
-		valuesList := vs.(basetypes.ListValue)
-		var values []string
-		for _, v := range valuesList.Elements() {
-			values = append(values, v.String())
-		}
-		valuesString := fmt.Sprintf("(%s)", strings.Join(values, ", "))
-		multipleValues = append(multipleValues, valuesString)
-	}
-	multipleValuesString := strings.Join(multipleValues, ", ")
-	var updateColumns []string
-	for _, c := range data.Columns.Elements() {
-		column := c.(basetypes.StringValue)
-		updateColumns = append(updateColumns, fmt.Sprintf("%s = VALUES(%s)", column.ValueString(), column.ValueString()))
-	}
-	updateColumnsString := strings.Join(updateColumns, ", ")
-	query := fmt.Sprintf(`INSERT INTO %s (%s) VALUES %s ON DUPLICATE KEY UPDATE %s;`,
-		data.TableName.ValueString(), columnsString, multipleValuesString, updateColumnsString)
-
-	var stderr strings.Builder
-	cmd := exec.Command("dolt", "sql", "-q", query)
-	cmd.Dir = abs
-	cmd.Stderr = &stderr
-	err = cmd.Run()
+	query := data.upsertQuery()
+	err = execQuery(abs, query)
 	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s\n\n%s", err, stderr.String()))
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s", err))
 		return
 	}
 
-	{
-		query := fmt.Sprintf("CALL DOLT_COMMIT('-A', '-m', 'Create row set', '--author', '%s <%s>');",
-			data.AuthorName.ValueString(), data.AuthorEmail.ValueString())
-
-		var stderr strings.Builder
-		cmd := exec.Command("dolt", "sql", "-q", query)
-		cmd.Dir = abs
-		cmd.Stderr = &stderr
-		err = cmd.Run()
-		if err != nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s\n\n%s", err, stderr.String()))
-			return
-		}
+	commitQuery := commitQuery("Create row set", data.AuthorName.ValueString(), data.AuthorEmail.ValueString())
+	err = execQuery(abs, commitQuery)
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s", err))
+		return
 	}
 
-	tflog.Trace(ctx, "created a resource")
+	tflog.Trace(ctx, "created a row set")
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -190,10 +152,64 @@ func (r *RowSetResource) Update(ctx context.Context, req resource.UpdateRequest,
 	repositoryPath := data.RepositoryPath.ValueString()
 	abs, err := filepath.Abs(repositoryPath)
 	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s", err))
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update row set, got error: %s", err))
 		return
 	}
 
+	query := data.upsertQuery()
+	err = execQuery(abs, query)
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update row set, got error: %s", err))
+		return
+	}
+
+	commitQuery := commitQuery("Update row set", data.AuthorName.ValueString(), data.AuthorEmail.ValueString())
+	err = execQuery(abs, commitQuery)
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update row set, got error: %s", err))
+		return
+	}
+
+	tflog.Trace(ctx, "updated a row set")
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *RowSetResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data RowSetResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	repositoryPath := data.RepositoryPath.ValueString()
+	abs, err := filepath.Abs(repositoryPath)
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete row set, got error: %s", err))
+		return
+	}
+
+	query := data.deleteQuery()
+	err = execQuery(abs, query)
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete row set, got error: %s", err))
+		return
+	}
+
+	commitQuery := commitQuery("Delete row set", data.AuthorName.ValueString(), data.AuthorEmail.ValueString())
+	err = execQuery(abs, commitQuery)
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete row set, got error: %s", err))
+		return
+	}
+
+	tflog.Trace(ctx, "deleted a row set")
+}
+
+func (r *RowSetResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+func (data RowSetResourceModel) upsertQuery() string {
 	var columns []string
 	for _, c := range data.Columns.Elements() {
 		column := c.(basetypes.StringValue)
@@ -219,83 +235,16 @@ func (r *RowSetResource) Update(ctx context.Context, req resource.UpdateRequest,
 	updateColumnsString := strings.Join(updateColumns, ", ")
 	query := fmt.Sprintf(`INSERT INTO %s (%s) VALUES %s ON DUPLICATE KEY UPDATE %s;`,
 		data.TableName.ValueString(), columnsString, multipleValuesString, updateColumnsString)
-
-	var stderr strings.Builder
-	cmd := exec.Command("dolt", "sql", "-q", query)
-	cmd.Dir = abs
-	cmd.Stderr = &stderr
-	err = cmd.Run()
-	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s\n\n%s", err, stderr.String()))
-		return
-	}
-
-	{
-		query := fmt.Sprintf("CALL DOLT_COMMIT('-A', '-m', 'Create row set', '--author', '%s <%s>');",
-			data.AuthorName.ValueString(), data.AuthorEmail.ValueString())
-
-		var stderr strings.Builder
-		cmd := exec.Command("dolt", "sql", "-q", query)
-		cmd.Dir = abs
-		cmd.Stderr = &stderr
-		err = cmd.Run()
-		if err != nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s\n\n%s", err, stderr.String()))
-			return
-		}
-	}
-
-	tflog.Trace(ctx, "updated a resource")
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	return query
 }
 
-func (r *RowSetResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var data RowSetResourceModel
-	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	repositoryPath := data.RepositoryPath.ValueString()
-	abs, err := filepath.Abs(repositoryPath)
-	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete row set, got error: %s", err))
-		return
-	}
-
+func (data RowSetResourceModel) deleteQuery() string {
 	var uniqueValues []string
 	for key := range data.Values.Elements() {
 		uniqueValues = append(uniqueValues, fmt.Sprintf("\"%s\"", key))
 	}
 	uniqueValuesString := strings.Join(uniqueValues, ", ")
-	query := fmt.Sprintf(`DELETE FROM %s WHERE %s IN (%s);`, data.TableName.ValueString(), data.UniqueColumn.ValueString(), uniqueValuesString)
-
-	var stderr strings.Builder
-	cmd := exec.Command("dolt", "sql", "-q", query)
-	cmd.Dir = abs
-	cmd.Stderr = &stderr
-	err = cmd.Run()
-	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete row set, got error: %s\n\n%s", err, stderr.String()))
-		return
-	}
-
-	{
-		query := fmt.Sprintf("CALL DOLT_COMMIT('-A', '-m', 'Create row set', '--author', '%s <%s>');",
-			data.AuthorName.ValueString(), data.AuthorEmail.ValueString())
-
-		var stderr strings.Builder
-		cmd := exec.Command("dolt", "sql", "-q", query)
-		cmd.Dir = abs
-		cmd.Stderr = &stderr
-		err = cmd.Run()
-		if err != nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s\n\n%s", err, stderr.String()))
-			return
-		}
-	}
-}
-
-func (r *RowSetResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	query := fmt.Sprintf(`DELETE FROM %s WHERE %s IN (%s);`,
+		data.TableName.ValueString(), data.UniqueColumn.ValueString(), uniqueValuesString)
+	return query
 }

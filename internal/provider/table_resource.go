@@ -3,16 +3,13 @@ package provider
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"os/exec"
-	"path/filepath"
-	"strings"
-
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"net/http"
+	"path/filepath"
 )
 
 var _ resource.Resource = &TableResource{}
@@ -101,27 +98,19 @@ func (r *TableResource) Create(ctx context.Context, req resource.CreateRequest, 
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create table, got error: %s", err))
 		return
 	}
-	cmd := exec.Command("dolt", "sql", "-q", data.Query.ValueString())
-	cmd.Dir = abs
-	err = cmd.Run()
+
+	err = execQuery(abs, data.Query.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create table, got error: %s", err))
 		return
 	}
 
-	{
-		query := fmt.Sprintf("CALL DOLT_COMMIT('-A', '-m', 'Create table \"%s\"', '--author', '%s <%s>');",
-			data.Name.ValueString(), data.AuthorName.ValueString(), data.AuthorEmail.ValueString())
-
-		var stderr strings.Builder
-		cmd := exec.Command("dolt", "sql", "-q", query)
-		cmd.Dir = abs
-		cmd.Stderr = &stderr
-		err = cmd.Run()
-		if err != nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s\n\n%s", err, stderr.String()))
-			return
-		}
+	commitQuery := commitQuery(fmt.Sprintf("Create table \"%s\"", data.Name.ValueString()),
+		data.AuthorName.ValueString(), data.AuthorEmail.ValueString())
+	err = execQuery(abs, commitQuery)
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete table, got error: %s", err))
+		return
 	}
 
 	tflog.Trace(ctx, "created a resource")
@@ -161,30 +150,29 @@ func (r *TableResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete table, got error: %s", err))
 		return
 	}
-	cmd := exec.Command("dolt", "sql", "-q", "DROP TABLE "+data.Name.ValueString())
-	cmd.Dir = abs
-	err = cmd.Run()
+
+	query := data.deleteQuery()
+	err = execQuery(abs, query)
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete table, got error: %s", err))
 		return
 	}
 
-	{
-		query := fmt.Sprintf("CALL DOLT_COMMIT('-A', '-m', 'Create table \"%s\"', '--author', '%s <%s>');",
-			data.Name.ValueString(), data.AuthorName.ValueString(), data.AuthorEmail.ValueString())
-
-		var stderr strings.Builder
-		cmd := exec.Command("dolt", "sql", "-q", query)
-		cmd.Dir = abs
-		cmd.Stderr = &stderr
-		err = cmd.Run()
-		if err != nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete table, got error: %s\n\n%s", err, stderr.String()))
-			return
-		}
+	commitQuery := commitQuery(fmt.Sprintf("Delete table \"%s\"", data.Name.ValueString()),
+		data.AuthorName.ValueString(), data.AuthorEmail.ValueString())
+	err = execQuery(abs, commitQuery)
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete table, got error: %s", err))
+		return
 	}
+
+	tflog.Trace(ctx, "deleted a table")
 }
 
 func (r *TableResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+func (data TableResourceModel) deleteQuery() string {
+	return "DROP TABLE " + data.Name.ValueString()
 }

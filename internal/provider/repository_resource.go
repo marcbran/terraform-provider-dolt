@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -164,4 +165,20 @@ func (r *RepositoryResource) Delete(ctx context.Context, req resource.DeleteRequ
 
 func (r *RepositoryResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+func commitQuery(message string, authorName string, authorEmail string) string {
+	return fmt.Sprintf("CALL DOLT_COMMIT('-A', '-m', '%s', '--author', '%s <%s>');", message, authorName, authorEmail)
+}
+
+func execQuery(dir string, query string) error {
+	var stderr strings.Builder
+	cmd := exec.Command("dolt", "sql", "-q", query)
+	cmd.Dir = dir
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("Unable to execute query, got error: %s\n\n%s", err, stderr.String())
+	}
+	return nil
 }
