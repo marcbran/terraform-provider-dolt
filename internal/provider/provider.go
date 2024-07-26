@@ -70,6 +70,7 @@ func (p *DoltProvider) Resources(ctx context.Context) []func() resource.Resource
 	return []func() resource.Resource{
 		NewRepositoryResource,
 		NewTableResource,
+		NewRowSetResource,
 	}
 }
 
