@@ -143,8 +143,9 @@ func (r *RowSetResource) Read(ctx context.Context, req resource.ReadRequest, res
 }
 
 func (r *RowSetResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data RowSetResourceModel
+	var data, state RowSetResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -161,6 +162,15 @@ func (r *RowSetResource) Update(ctx context.Context, req resource.UpdateRequest,
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update row set, got error: %s", err))
 		return
+	}
+
+	pruneQuery := data.pruneQuery(state)
+	if pruneQuery != "" {
+		err = execQuery(abs, pruneQuery)
+		if err != nil {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update row set, got error: %s", err))
+			return
+		}
 	}
 
 	commitQuery := commitQuery("Update row set", data.AuthorName.ValueString(), data.AuthorEmail.ValueString())
@@ -235,6 +245,22 @@ func (data RowSetResourceModel) upsertQuery() string {
 	updateColumnsString := strings.Join(updateColumns, ", ")
 	query := fmt.Sprintf(`INSERT INTO %s (%s) VALUES %s ON DUPLICATE KEY UPDATE %s;`,
 		data.TableName.ValueString(), columnsString, multipleValuesString, updateColumnsString)
+	return query
+}
+
+func (data RowSetResourceModel) pruneQuery(state RowSetResourceModel) string {
+	var uniqueValues []string
+	for key := range state.Values.Elements() {
+		if _, ok := data.Values.Elements()[key]; !ok {
+			uniqueValues = append(uniqueValues, fmt.Sprintf("\"%s\"", key))
+		}
+	}
+	if len(uniqueValues) == 0 {
+		return ""
+	}
+	uniqueValuesString := strings.Join(uniqueValues, ", ")
+	query := fmt.Sprintf(`DELETE FROM %s WHERE %s IN (%s);`,
+		data.TableName.ValueString(), data.UniqueColumn.ValueString(), uniqueValuesString)
 	return query
 }
 
