@@ -75,9 +75,7 @@ func (p *DoltProvider) Resources(ctx context.Context) []func() resource.Resource
 }
 
 func (p *DoltProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{
-		NewExampleDataSource,
-	}
+	return []func() datasource.DataSource{}
 }
 
 func (p *DoltProvider) Functions(ctx context.Context) []func() function.Function {
