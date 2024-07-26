@@ -132,7 +132,14 @@ func (r *RowSetResource) Create(ctx context.Context, req resource.CreateRequest,
 		multipleValues = append(multipleValues, valuesString)
 	}
 	multipleValuesString := strings.Join(multipleValues, ", ")
-	query := fmt.Sprintf(`INSERT INTO %s (%s) VALUES %s;`, data.TableName.ValueString(), columnsString, multipleValuesString)
+	var updateColumns []string
+	for _, c := range data.Columns.Elements() {
+		column := c.(basetypes.StringValue)
+		updateColumns = append(updateColumns, fmt.Sprintf("%s = VALUES(%s)", column.ValueString(), column.ValueString()))
+	}
+	updateColumnsString := strings.Join(updateColumns, ", ")
+	query := fmt.Sprintf(`INSERT INTO %s (%s) VALUES %s ON DUPLICATE KEY UPDATE %s;`,
+		data.TableName.ValueString(), columnsString, multipleValuesString, updateColumnsString)
 
 	var stderr strings.Builder
 	cmd := exec.Command("dolt", "sql", "-q", query)
@@ -180,6 +187,65 @@ func (r *RowSetResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
+	repositoryPath := data.RepositoryPath.ValueString()
+	abs, err := filepath.Abs(repositoryPath)
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s", err))
+		return
+	}
+
+	var columns []string
+	for _, c := range data.Columns.Elements() {
+		column := c.(basetypes.StringValue)
+		columns = append(columns, column.ValueString())
+	}
+	columnsString := strings.Join(columns, ", ")
+	var multipleValues []string
+	for _, vs := range data.Values.Elements() {
+		valuesList := vs.(basetypes.ListValue)
+		var values []string
+		for _, v := range valuesList.Elements() {
+			values = append(values, v.String())
+		}
+		valuesString := fmt.Sprintf("(%s)", strings.Join(values, ", "))
+		multipleValues = append(multipleValues, valuesString)
+	}
+	multipleValuesString := strings.Join(multipleValues, ", ")
+	var updateColumns []string
+	for _, c := range data.Columns.Elements() {
+		column := c.(basetypes.StringValue)
+		updateColumns = append(updateColumns, fmt.Sprintf("%s = VALUES(%s)", column.ValueString(), column.ValueString()))
+	}
+	updateColumnsString := strings.Join(updateColumns, ", ")
+	query := fmt.Sprintf(`INSERT INTO %s (%s) VALUES %s ON DUPLICATE KEY UPDATE %s;`,
+		data.TableName.ValueString(), columnsString, multipleValuesString, updateColumnsString)
+
+	var stderr strings.Builder
+	cmd := exec.Command("dolt", "sql", "-q", query)
+	cmd.Dir = abs
+	cmd.Stderr = &stderr
+	err = cmd.Run()
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s\n\n%s", err, stderr.String()))
+		return
+	}
+
+	{
+		query := fmt.Sprintf("CALL DOLT_COMMIT('-A', '-m', 'Create row set', '--author', '%s <%s>');",
+			data.AuthorName.ValueString(), data.AuthorEmail.ValueString())
+
+		var stderr strings.Builder
+		cmd := exec.Command("dolt", "sql", "-q", query)
+		cmd.Dir = abs
+		cmd.Stderr = &stderr
+		err = cmd.Run()
+		if err != nil {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s\n\n%s", err, stderr.String()))
+			return
+		}
+	}
+
+	tflog.Trace(ctx, "updated a resource")
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
