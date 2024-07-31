@@ -82,7 +82,7 @@ jobs:
           terraform_wrapper: false
       - name: Install Dolt CLI
         run: |
-          curl -L https://github.com/dolthub/dolt/releases/latest/download/install.sh | bash
+          curl -L https://github.com/dolthub/dolt/releases/latest/download/install.sh | sudo bash
       - run: go mod download
       - env:
           TF_ACC: "1"
