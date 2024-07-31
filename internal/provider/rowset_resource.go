@@ -222,25 +222,28 @@ func (r *RowSetResource) ImportState(ctx context.Context, req resource.ImportSta
 func (data RowSetResourceModel) upsertQuery() string {
 	var columns []string
 	for _, c := range data.Columns.Elements() {
-		column := c.(basetypes.StringValue)
-		columns = append(columns, column.ValueString())
+		if column, ok := c.(basetypes.StringValue); ok {
+			columns = append(columns, column.ValueString())
+		}
 	}
 	columnsString := strings.Join(columns, ", ")
 	var multipleValues []string
 	for _, vs := range data.Values.Elements() {
-		valuesList := vs.(basetypes.ListValue)
-		var values []string
-		for _, v := range valuesList.Elements() {
-			values = append(values, v.String())
+		if valuesList, ok := vs.(basetypes.ListValue); ok {
+			var values []string
+			for _, v := range valuesList.Elements() {
+				values = append(values, v.String())
+			}
+			valuesString := fmt.Sprintf("(%s)", strings.Join(values, ", "))
+			multipleValues = append(multipleValues, valuesString)
 		}
-		valuesString := fmt.Sprintf("(%s)", strings.Join(values, ", "))
-		multipleValues = append(multipleValues, valuesString)
 	}
 	multipleValuesString := strings.Join(multipleValues, ", ")
 	var updateColumns []string
 	for _, c := range data.Columns.Elements() {
-		column := c.(basetypes.StringValue)
-		updateColumns = append(updateColumns, fmt.Sprintf("%s = VALUES(%s)", column.ValueString(), column.ValueString()))
+		if column, ok := c.(basetypes.StringValue); ok {
+			updateColumns = append(updateColumns, fmt.Sprintf("%s = VALUES(%s)", column.ValueString(), column.ValueString()))
+		}
 	}
 	updateColumnsString := strings.Join(updateColumns, ", ")
 	query := fmt.Sprintf(`INSERT INTO %s (%s) VALUES %s ON DUPLICATE KEY UPDATE %s;`,
