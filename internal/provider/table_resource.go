@@ -8,7 +8,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"net/http"
 	"path/filepath"
 )
 
@@ -19,12 +18,9 @@ func NewTableResource() resource.Resource {
 	return &TableResource{}
 }
 
-// TableResource defines the resource implementation.
 type TableResource struct {
-	client *http.Client
 }
 
-// TableResourceModel describes the resource data model.
 type TableResourceModel struct {
 	RepositoryPath types.String `tfsdk:"repository_path"`
 	AuthorName     types.String `tfsdk:"author_name"`
@@ -67,22 +63,6 @@ func (r *TableResource) Schema(ctx context.Context, req resource.SchemaRequest, 
 }
 
 func (r *TableResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-
-	client, ok := req.ProviderData.(*http.Client)
-
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *http.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	r.client = client
 }
 
 func (r *TableResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {

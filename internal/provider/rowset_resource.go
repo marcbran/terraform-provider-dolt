@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
-	"net/http"
 	"path/filepath"
 	"strings"
 
@@ -22,12 +21,9 @@ func NewRowSetResource() resource.Resource {
 	return &RowSetResource{}
 }
 
-// RowSetResource defines the resource implementation.
 type RowSetResource struct {
-	client *http.Client
 }
 
-// RowSetResourceModel describes the resource data model.
 type RowSetResourceModel struct {
 	RepositoryPath types.String `tfsdk:"repository_path"`
 	AuthorName     types.String `tfsdk:"author_name"`
@@ -82,22 +78,6 @@ func (r *RowSetResource) Schema(ctx context.Context, req resource.SchemaRequest,
 }
 
 func (r *RowSetResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-
-	client, ok := req.ProviderData.(*http.Client)
-
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *http.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	r.client = client
 }
 
 func (r *RowSetResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {

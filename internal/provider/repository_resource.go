@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,12 +22,9 @@ func NewRepositoryResource() resource.Resource {
 	return &RepositoryResource{}
 }
 
-// RepositoryResource defines the resource implementation.
 type RepositoryResource struct {
-	client *http.Client
 }
 
-// RepositoryResourceModel describes the resource data model.
 type RepositoryResourceModel struct {
 	Path  types.String `tfsdk:"path"`
 	Name  types.String `tfsdk:"name"`
@@ -61,22 +57,6 @@ func (r *RepositoryResource) Schema(ctx context.Context, req resource.SchemaRequ
 }
 
 func (r *RepositoryResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-
-	client, ok := req.ProviderData.(*http.Client)
-
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *http.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	r.client = client
 }
 
 func (r *RepositoryResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -106,15 +86,7 @@ func (r *RepositoryResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
-	// For the purposes of this repository code, hardcoding a response value to
-	// save into the Terraform state.
-	//data.Id = types.StringValue("repository-id")
-
-	// Write logs using the tflog package
-	// Documentation: https://terraform.io/plugin/log
 	tflog.Trace(ctx, "created a resource")
-
-	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
