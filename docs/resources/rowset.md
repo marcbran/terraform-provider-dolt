@@ -21,31 +21,31 @@ terraform {
   }
 }
 
-resource "dolt_repository" "main" {
-  path  = "./main"
+provider "dolt" {
+  path  = "."
   name  = "John Doe"
   email = "john.doe@example.com"
 }
 
+resource "dolt_database" "main" {
+  name = "main"
+}
+
 resource "dolt_table" "articles" {
-  repository_path = dolt_repository.main.path
-  author_name     = dolt_repository.main.name
-  author_email    = dolt_repository.main.email
+  database = dolt_database.main.name
 
   name  = "articles"
   query = <<EOF
 CREATE TABLE articles (
   id INT PRIMARY KEY,
-  title VARCHAR(128) UNIQUE,
+  title VARCHAR(128) UNIQUE
 );
 EOF
 }
 
 resource "dolt_rowset" "rowset" {
-  repository_path = dolt_repository.main.path
-  author_name     = dolt_repository.main.name
-  author_email    = dolt_repository.main.email
-  table_name      = dolt_table.articles.name
+  database = dolt_database.main.name
+  table    = dolt_table.articles.name
 
   columns       = ["id", "title"]
   unique_column = "id"
@@ -61,10 +61,12 @@ resource "dolt_rowset" "rowset" {
 
 ### Required
 
-- `author_email` (String) Author email
-- `author_name` (String) Author name
 - `columns` (List of String) Columns for which values will be inserted
-- `repository_path` (String) Path to the data repository that holds the row set
-- `table_name` (String) Name of the table where the set of rows will be stored
+- `database` (String) Name of the database that contains the row set
+- `table` (String) Name of the table where the set of rows will be stored
 - `unique_column` (String) Column that will be used to uniquely identify each row
 - `values` (Map of List of String) Values to be inserted into the table
+
+### Read-Only
+
+- `row_count` (Number) Number of rows that are managed by this resource
