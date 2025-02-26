@@ -6,22 +6,24 @@ terraform {
   }
 }
 
-resource "dolt_repository" "main" {
-  path  = "./main"
+provider "dolt" {
+  path  = "."
   name  = "John Doe"
   email = "john.doe@example.com"
 }
 
+resource "dolt_database" "main" {
+  name = "main"
+}
+
 resource "dolt_table" "articles" {
-  repository_path = dolt_repository.main.path
-  author_name     = dolt_repository.main.name
-  author_email    = dolt_repository.main.email
+  database = dolt_database.main.name
 
   name  = "articles"
   query = <<EOF
 CREATE TABLE articles (
   id INT PRIMARY KEY,
-  title VARCHAR(128) UNIQUE,
+  title VARCHAR(128) UNIQUE
 );
 EOF
 }

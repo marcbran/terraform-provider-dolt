@@ -6,8 +6,12 @@ terraform {
   }
 }
 
-resource "dolt_repository" "main" {
-  path  = "./main"
+provider "dolt" {
+  path  = "."
   name  = "John Doe"
   email = "john.doe@example.com"
+}
+
+resource "dolt_database" "main" {
+  name = "main"
 }

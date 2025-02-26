@@ -7,25 +7,24 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-func TestAccRepositoryResource(t *testing.T) {
+func TestAccDatabaseResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccRepositoryResourceConfig("./test"),
-				Check:  resource.ComposeAggregateTestCheckFunc(),
+				Config: testAccProviderConfig(".") +
+					testAccDatabaseResourceConfig(),
+				Check: resource.ComposeAggregateTestCheckFunc(),
 			},
 		},
 	})
 }
 
-func testAccRepositoryResourceConfig(path string) string {
+func testAccDatabaseResourceConfig() string {
 	return fmt.Sprintf(`
-resource "dolt_repository" "test" {
-  path  = %[1]q
-  email = "test@example.com"
-  name  = "Test Example"
+resource "dolt_database" "test" {
+  name = "test"
 }
-`, path)
+`)
 }

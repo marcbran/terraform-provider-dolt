@@ -2,13 +2,13 @@ package provider
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"path/filepath"
 )
 
 var _ resource.Resource = &TableResource{}
@@ -19,14 +19,25 @@ func NewTableResource() resource.Resource {
 }
 
 type TableResource struct {
+	db *sql.DB
 }
 
 type TableResourceModel struct {
-	RepositoryPath types.String `tfsdk:"repository_path"`
-	AuthorName     types.String `tfsdk:"author_name"`
-	AuthorEmail    types.String `tfsdk:"author_email"`
-	Name           types.String `tfsdk:"name"`
-	Query          types.String `tfsdk:"query"`
+	Database types.String `tfsdk:"database"`
+	Name     types.String `tfsdk:"name"`
+	Query    types.String `tfsdk:"query"`
+}
+
+func (m TableResourceModel) useQuery() string {
+	return fmt.Sprintf("USE %s", m.Database.ValueString())
+}
+
+func (m TableResourceModel) createQuery() string {
+	return m.Query.ValueString()
+}
+
+func (m TableResourceModel) deleteQuery() string {
+	return fmt.Sprintf("DROP TABLE %s", m.Name.ValueString())
 }
 
 func (r *TableResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -38,16 +49,8 @@ func (r *TableResource) Schema(ctx context.Context, req resource.SchemaRequest, 
 		MarkdownDescription: "Table resource",
 
 		Attributes: map[string]schema.Attribute{
-			"repository_path": schema.StringAttribute{
-				MarkdownDescription: "Path to the data repository that holds the table",
-				Required:            true,
-			},
-			"author_name": schema.StringAttribute{
-				MarkdownDescription: "Author name",
-				Required:            true,
-			},
-			"author_email": schema.StringAttribute{
-				MarkdownDescription: "Author email",
+			"database": schema.StringAttribute{
+				MarkdownDescription: "Name of the database that contains the table",
 				Required:            true,
 			},
 			"name": schema.StringAttribute{
@@ -63,6 +66,22 @@ func (r *TableResource) Schema(ctx context.Context, req resource.SchemaRequest, 
 }
 
 func (r *TableResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+
+	db, ok := req.ProviderData.(*sql.DB)
+
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Resource Configure Type",
+			fmt.Sprintf("Expected *sql.DB, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
+
+		return
+	}
+
+	r.db = db
 }
 
 func (r *TableResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -72,24 +91,27 @@ func (r *TableResource) Create(ctx context.Context, req resource.CreateRequest, 
 		return
 	}
 
-	repositoryPath := data.RepositoryPath.ValueString()
-	abs, err := filepath.Abs(repositoryPath)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create table, got error: %s", err))
 		return
 	}
 
-	err = execQuery(abs, data.Query.ValueString())
+	_, err = tx.Exec(data.useQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create table, got error: %s", err))
 		return
 	}
 
-	commitQuery := commitQuery(fmt.Sprintf("Create table \"%s\"", data.Name.ValueString()),
-		data.AuthorName.ValueString(), data.AuthorEmail.ValueString())
-	err = execQuery(abs, commitQuery)
+	_, err = tx.Exec(data.createQuery())
 	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete table, got error: %s", err))
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create table, got error: %s", err))
+		return
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create table, got error: %s", err))
 		return
 	}
 
@@ -124,23 +146,25 @@ func (r *TableResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 		return
 	}
 
-	repositoryPath := data.RepositoryPath.ValueString()
-	abs, err := filepath.Abs(repositoryPath)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete table, got error: %s", err))
 		return
 	}
 
-	query := data.deleteQuery()
-	err = execQuery(abs, query)
+	_, err = tx.Exec(data.useQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete table, got error: %s", err))
 		return
 	}
 
-	commitQuery := commitQuery(fmt.Sprintf("Delete table \"%s\"", data.Name.ValueString()),
-		data.AuthorName.ValueString(), data.AuthorEmail.ValueString())
-	err = execQuery(abs, commitQuery)
+	_, err = tx.Exec(data.deleteQuery())
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete table, got error: %s", err))
+		return
+	}
+
+	err = tx.Commit()
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete table, got error: %s", err))
 		return
@@ -151,8 +175,4 @@ func (r *TableResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 
 func (r *TableResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-}
-
-func (data TableResourceModel) deleteQuery() string {
-	return "DROP TABLE " + data.Name.ValueString()
 }

@@ -2,9 +2,9 @@ package provider
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
-	"path/filepath"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -22,16 +22,79 @@ func NewRowSetResource() resource.Resource {
 }
 
 type RowSetResource struct {
+	db *sql.DB
 }
 
 type RowSetResourceModel struct {
-	RepositoryPath types.String `tfsdk:"repository_path"`
-	AuthorName     types.String `tfsdk:"author_name"`
-	AuthorEmail    types.String `tfsdk:"author_email"`
-	TableName      types.String `tfsdk:"table_name"`
-	UniqueColumn   types.String `tfsdk:"unique_column"`
-	Columns        types.List   `tfsdk:"columns"`
-	Values         types.Map    `tfsdk:"values"`
+	Database     types.String `tfsdk:"database"`
+	Table        types.String `tfsdk:"table"`
+	UniqueColumn types.String `tfsdk:"unique_column"`
+	Columns      types.List   `tfsdk:"columns"`
+	Values       types.Map    `tfsdk:"values"`
+	RowCount     types.Int64  `tfsdk:"row_count"`
+}
+
+func (m RowSetResourceModel) useQuery() string {
+	return fmt.Sprintf("USE %s", m.Database.ValueString())
+}
+
+func (m RowSetResourceModel) upsertQuery() string {
+	var columns []string
+	for _, c := range m.Columns.Elements() {
+		if column, ok := c.(basetypes.StringValue); ok {
+			columns = append(columns, column.ValueString())
+		}
+	}
+	columnsString := strings.Join(columns, ", ")
+	var multipleValues []string
+	for _, vs := range m.Values.Elements() {
+		if valuesList, ok := vs.(basetypes.ListValue); ok {
+			var values []string
+			for _, v := range valuesList.Elements() {
+				values = append(values, v.String())
+			}
+			valuesString := fmt.Sprintf("(%s)", strings.Join(values, ", "))
+			multipleValues = append(multipleValues, valuesString)
+		}
+	}
+	multipleValuesString := strings.Join(multipleValues, ", ")
+	var updateColumns []string
+	for _, c := range m.Columns.Elements() {
+		if column, ok := c.(basetypes.StringValue); ok {
+			updateColumns = append(updateColumns, fmt.Sprintf("%s = VALUES(%s)", column.ValueString(), column.ValueString()))
+		}
+	}
+	updateColumnsString := strings.Join(updateColumns, ", ")
+	query := fmt.Sprintf(`INSERT INTO %s (%s) VALUES %s ON DUPLICATE KEY UPDATE %s;`,
+		m.Table.ValueString(), columnsString, multipleValuesString, updateColumnsString)
+	return query
+}
+
+func (m RowSetResourceModel) pruneQuery(state RowSetResourceModel) string {
+	var uniqueValues []string
+	for key := range state.Values.Elements() {
+		if _, ok := m.Values.Elements()[key]; !ok {
+			uniqueValues = append(uniqueValues, fmt.Sprintf("\"%s\"", key))
+		}
+	}
+	if len(uniqueValues) == 0 {
+		return ""
+	}
+	uniqueValuesString := strings.Join(uniqueValues, ", ")
+	query := fmt.Sprintf(`DELETE FROM %s WHERE %s IN (%s);`,
+		m.Table.ValueString(), m.UniqueColumn.ValueString(), uniqueValuesString)
+	return query
+}
+
+func (m RowSetResourceModel) deleteQuery() string {
+	var uniqueValues []string
+	for key := range m.Values.Elements() {
+		uniqueValues = append(uniqueValues, fmt.Sprintf("\"%s\"", key))
+	}
+	uniqueValuesString := strings.Join(uniqueValues, ", ")
+	query := fmt.Sprintf(`DELETE FROM %s WHERE %s IN (%s);`,
+		m.Table.ValueString(), m.UniqueColumn.ValueString(), uniqueValuesString)
+	return query
 }
 
 func (r *RowSetResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -43,19 +106,11 @@ func (r *RowSetResource) Schema(ctx context.Context, req resource.SchemaRequest,
 		MarkdownDescription: "RowSet resource",
 
 		Attributes: map[string]schema.Attribute{
-			"repository_path": schema.StringAttribute{
-				MarkdownDescription: "Path to the data repository that holds the row set",
+			"database": schema.StringAttribute{
+				MarkdownDescription: "Name of the database that contains the row set",
 				Required:            true,
 			},
-			"author_name": schema.StringAttribute{
-				MarkdownDescription: "Author name",
-				Required:            true,
-			},
-			"author_email": schema.StringAttribute{
-				MarkdownDescription: "Author email",
-				Required:            true,
-			},
-			"table_name": schema.StringAttribute{
+			"table": schema.StringAttribute{
 				MarkdownDescription: "Name of the table where the set of rows will be stored",
 				Required:            true,
 			},
@@ -73,11 +128,31 @@ func (r *RowSetResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				ElementType:         types.ListType{ElemType: types.StringType},
 				Required:            true,
 			},
+			"row_count": schema.Int64Attribute{
+				MarkdownDescription: "Number of rows that are managed by this resource",
+				Computed:            true,
+			},
 		},
 	}
 }
 
 func (r *RowSetResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+
+	db, ok := req.ProviderData.(*sql.DB)
+
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Resource Configure Type",
+			fmt.Sprintf("Expected *sql.DB, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
+
+		return
+	}
+
+	r.db = db
 }
 
 func (r *RowSetResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -87,26 +162,31 @@ func (r *RowSetResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	repositoryPath := data.RepositoryPath.ValueString()
-	abs, err := filepath.Abs(repositoryPath)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s", err))
 		return
 	}
 
-	query := data.upsertQuery()
-	err = execQuery(abs, query)
+	_, err = tx.Exec(data.useQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s", err))
 		return
 	}
 
-	commitQuery := commitQuery("Create row set", data.AuthorName.ValueString(), data.AuthorEmail.ValueString())
-	err = execQuery(abs, commitQuery)
+	_, err = tx.Exec(data.upsertQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s", err))
 		return
 	}
+
+	err = tx.Commit()
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s", err))
+		return
+	}
+
+	data.RowCount = types.Int64Value(int64(len(data.Values.Elements())))
 
 	tflog.Trace(ctx, "created a row set")
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -130,15 +210,19 @@ func (r *RowSetResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	repositoryPath := data.RepositoryPath.ValueString()
-	abs, err := filepath.Abs(repositoryPath)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update row set, got error: %s", err))
 		return
 	}
 
-	query := data.upsertQuery()
-	err = execQuery(abs, query)
+	_, err = tx.Exec(data.useQuery())
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update row set, got error: %s", err))
+		return
+	}
+
+	_, err = tx.Exec(data.upsertQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update row set, got error: %s", err))
 		return
@@ -146,19 +230,20 @@ func (r *RowSetResource) Update(ctx context.Context, req resource.UpdateRequest,
 
 	pruneQuery := data.pruneQuery(state)
 	if pruneQuery != "" {
-		err = execQuery(abs, pruneQuery)
+		_, err = tx.Exec(pruneQuery)
 		if err != nil {
 			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update row set, got error: %s", err))
 			return
 		}
 	}
 
-	commitQuery := commitQuery("Update row set", data.AuthorName.ValueString(), data.AuthorEmail.ValueString())
-	err = execQuery(abs, commitQuery)
+	err = tx.Commit()
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update row set, got error: %s", err))
 		return
 	}
+
+	data.RowCount = types.Int64Value(int64(len(data.Values.Elements())))
 
 	tflog.Trace(ctx, "updated a row set")
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -171,89 +256,35 @@ func (r *RowSetResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		return
 	}
 
-	repositoryPath := data.RepositoryPath.ValueString()
-	abs, err := filepath.Abs(repositoryPath)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete row set, got error: %s", err))
 		return
 	}
 
-	query := data.deleteQuery()
-	err = execQuery(abs, query)
+	_, err = tx.Exec(data.useQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete row set, got error: %s", err))
 		return
 	}
 
-	commitQuery := commitQuery("Delete row set", data.AuthorName.ValueString(), data.AuthorEmail.ValueString())
-	err = execQuery(abs, commitQuery)
+	_, err = tx.Exec(data.deleteQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete row set, got error: %s", err))
 		return
 	}
+
+	err = tx.Commit()
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete row set, got error: %s", err))
+		return
+	}
+
+	data.RowCount = types.Int64Value(0)
 
 	tflog.Trace(ctx, "deleted a row set")
 }
 
 func (r *RowSetResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-}
-
-func (data RowSetResourceModel) upsertQuery() string {
-	var columns []string
-	for _, c := range data.Columns.Elements() {
-		if column, ok := c.(basetypes.StringValue); ok {
-			columns = append(columns, column.ValueString())
-		}
-	}
-	columnsString := strings.Join(columns, ", ")
-	var multipleValues []string
-	for _, vs := range data.Values.Elements() {
-		if valuesList, ok := vs.(basetypes.ListValue); ok {
-			var values []string
-			for _, v := range valuesList.Elements() {
-				values = append(values, v.String())
-			}
-			valuesString := fmt.Sprintf("(%s)", strings.Join(values, ", "))
-			multipleValues = append(multipleValues, valuesString)
-		}
-	}
-	multipleValuesString := strings.Join(multipleValues, ", ")
-	var updateColumns []string
-	for _, c := range data.Columns.Elements() {
-		if column, ok := c.(basetypes.StringValue); ok {
-			updateColumns = append(updateColumns, fmt.Sprintf("%s = VALUES(%s)", column.ValueString(), column.ValueString()))
-		}
-	}
-	updateColumnsString := strings.Join(updateColumns, ", ")
-	query := fmt.Sprintf(`INSERT INTO %s (%s) VALUES %s ON DUPLICATE KEY UPDATE %s;`,
-		data.TableName.ValueString(), columnsString, multipleValuesString, updateColumnsString)
-	return query
-}
-
-func (data RowSetResourceModel) pruneQuery(state RowSetResourceModel) string {
-	var uniqueValues []string
-	for key := range state.Values.Elements() {
-		if _, ok := data.Values.Elements()[key]; !ok {
-			uniqueValues = append(uniqueValues, fmt.Sprintf("\"%s\"", key))
-		}
-	}
-	if len(uniqueValues) == 0 {
-		return ""
-	}
-	uniqueValuesString := strings.Join(uniqueValues, ", ")
-	query := fmt.Sprintf(`DELETE FROM %s WHERE %s IN (%s);`,
-		data.TableName.ValueString(), data.UniqueColumn.ValueString(), uniqueValuesString)
-	return query
-}
-
-func (data RowSetResourceModel) deleteQuery() string {
-	var uniqueValues []string
-	for key := range data.Values.Elements() {
-		uniqueValues = append(uniqueValues, fmt.Sprintf("\"%s\"", key))
-	}
-	uniqueValuesString := strings.Join(uniqueValues, ", ")
-	query := fmt.Sprintf(`DELETE FROM %s WHERE %s IN (%s);`,
-		data.TableName.ValueString(), data.UniqueColumn.ValueString(), uniqueValuesString)
-	return query
 }

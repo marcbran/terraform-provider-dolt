@@ -13,25 +13,19 @@ func TestAccTableResource(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccTableResourceConfig("./test"),
-				Check:  resource.ComposeAggregateTestCheckFunc(),
+				Config: testAccProviderConfig(".") +
+					testAccDatabaseResourceConfig() +
+					testAccTableResourceConfig(),
+				Check: resource.ComposeAggregateTestCheckFunc(),
 			},
 		},
 	})
 }
 
-func testAccTableResourceConfig(path string) string {
+func testAccTableResourceConfig() string {
 	return fmt.Sprintf(`
-resource "dolt_repository" "test" {
-  path  = %[1]q
-  email = "test@example.com"
-  name  = "Test Example"
-}
-
 resource "dolt_table" "test" {
-  repository_path = dolt_repository.test.path
-  author_name     = dolt_repository.test.name
-  author_email    = dolt_repository.test.email
+  database = dolt_database.test.name
 
   name  = "test_table"
   query = <<EOF
@@ -41,5 +35,5 @@ CREATE TABLE test_table (
 );
 EOF
 }
-`, path)
+`)
 }

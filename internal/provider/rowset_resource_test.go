@@ -13,40 +13,50 @@ func TestAccRowSetResource(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccRowSetResourceConfig("./test"),
-				Check:  resource.ComposeAggregateTestCheckFunc(),
+				Config: testAccProviderConfig(".") +
+					testAccDatabaseResourceConfig() +
+					testAccTableResourceConfig() +
+					testAccRowSetResourceConfigOne(),
+				Check: resource.ComposeAggregateTestCheckFunc(),
+			},
+			{
+				Config: testAccProviderConfig(".") +
+					testAccDatabaseResourceConfig() +
+					testAccTableResourceConfig() +
+					testAccRowSetResourceConfigTwo(),
+				Check: resource.ComposeAggregateTestCheckFunc(),
+			},
+			{
+				Config: testAccProviderConfig(".") +
+					testAccDatabaseResourceConfig() +
+					testAccTableResourceConfig() +
+					testAccRowSetResourceConfigOne(),
+				Check: resource.ComposeAggregateTestCheckFunc(),
 			},
 		},
 	})
 }
 
-func testAccRowSetResourceConfig(path string) string {
+func testAccRowSetResourceConfigOne() string {
 	return fmt.Sprintf(`
-resource "dolt_repository" "test" {
-  path  = %[1]q
-  email = "test@example.com"
-  name  = "Test Example"
-}
-
-resource "dolt_table" "test" {
-  repository_path = dolt_repository.test.path
-  author_name     = dolt_repository.test.name
-  author_email    = dolt_repository.test.email
-
-  name  = "test_table"
-  query = <<EOF
-CREATE TABLE test_table (
-	id INT PRIMARY KEY,
-	name VARCHAR(100)
-);
-EOF
-}
-
 resource "dolt_rowset" "test" {
-  repository_path = dolt_repository.test.path
-  author_name     = dolt_repository.test.name
-  author_email    = dolt_repository.test.email
-  table_name      = dolt_table.test.name
+  database = dolt_database.test.name
+  table    = dolt_table.test.name
+
+  columns       = ["id", "name"]
+  unique_column = "id"
+  values  = {
+    1 = ["1", "Alice"],
+  }
+}
+`)
+}
+
+func testAccRowSetResourceConfigTwo() string {
+	return fmt.Sprintf(`
+resource "dolt_rowset" "test" {
+  database = dolt_database.test.name
+  table    = dolt_table.test.name
 
   columns       = ["id", "name"]
   unique_column = "id"
@@ -55,5 +65,5 @@ resource "dolt_rowset" "test" {
     2 = ["2", "Bob"],
   }
 }
-`, path)
+`)
 }
