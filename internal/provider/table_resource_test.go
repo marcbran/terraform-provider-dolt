@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -13,7 +12,7 @@ func TestAccTableResource(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccProviderConfig(".") +
+				Config: testAccProviderConfig() +
 					testAccDatabaseResourceConfig() +
 					testAccTableResourceConfig(),
 				Check: resource.ComposeAggregateTestCheckFunc(),
@@ -23,7 +22,7 @@ func TestAccTableResource(t *testing.T) {
 }
 
 func testAccTableResourceConfig() string {
-	return fmt.Sprintf(`
+	return `
 resource "dolt_table" "test" {
   database = dolt_database.test.name
 
@@ -35,5 +34,5 @@ CREATE TABLE test_table (
 );
 EOF
 }
-`)
+`
 }

@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -13,21 +12,21 @@ func TestAccRowSetResource(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccProviderConfig(".") +
+				Config: testAccProviderConfig() +
 					testAccDatabaseResourceConfig() +
 					testAccTableResourceConfig() +
 					testAccRowSetResourceConfigOne(),
 				Check: resource.ComposeAggregateTestCheckFunc(),
 			},
 			{
-				Config: testAccProviderConfig(".") +
+				Config: testAccProviderConfig() +
 					testAccDatabaseResourceConfig() +
 					testAccTableResourceConfig() +
 					testAccRowSetResourceConfigTwo(),
 				Check: resource.ComposeAggregateTestCheckFunc(),
 			},
 			{
-				Config: testAccProviderConfig(".") +
+				Config: testAccProviderConfig() +
 					testAccDatabaseResourceConfig() +
 					testAccTableResourceConfig() +
 					testAccRowSetResourceConfigOne(),
@@ -38,7 +37,7 @@ func TestAccRowSetResource(t *testing.T) {
 }
 
 func testAccRowSetResourceConfigOne() string {
-	return fmt.Sprintf(`
+	return `
 resource "dolt_rowset" "test" {
   database = dolt_database.test.name
   table    = dolt_table.test.name
@@ -49,11 +48,11 @@ resource "dolt_rowset" "test" {
     1 = ["1", "Alice"],
   }
 }
-`)
+`
 }
 
 func testAccRowSetResourceConfigTwo() string {
-	return fmt.Sprintf(`
+	return `
 resource "dolt_rowset" "test" {
   database = dolt_database.test.name
   table    = dolt_table.test.name
@@ -65,5 +64,5 @@ resource "dolt_rowset" "test" {
     2 = ["2", "Bob"],
   }
 }
-`)
+`
 }

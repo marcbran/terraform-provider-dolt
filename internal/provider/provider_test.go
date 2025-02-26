@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
@@ -15,12 +14,12 @@ var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServe
 func testAccPreCheck(t *testing.T) {
 }
 
-func testAccProviderConfig(path string) string {
-	return fmt.Sprintf(`
+func testAccProviderConfig() string {
+	return `
 provider "dolt" {
-  path  = %[1]q
+  path  = "."
   email = "test@example.com"
   name  = "Test Example"
 }
-`, path)
+`
 }
