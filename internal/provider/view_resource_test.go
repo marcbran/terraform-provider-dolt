@@ -25,6 +25,10 @@ func TestAccViewResource(t *testing.T) {
 func testAccViewResourceConfig() string {
 	return `
 resource "dolt_view" "test" {
+  depends_on = [
+    dolt_table.test
+  ]
+
   database = dolt_database.test.name
 
   name  = "test_view"
