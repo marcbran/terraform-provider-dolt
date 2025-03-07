@@ -81,7 +81,7 @@ func (r *DatabaseResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	_, err := r.db.Exec(data.createQuery())
+	_, err := r.db.ExecContext(ctx, data.createQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create database, got error: %s", err))
 		return
@@ -140,7 +140,7 @@ func (r *DatabaseResource) Delete(ctx context.Context, req resource.DeleteReques
 		return
 	}
 
-	_, err := r.db.Exec(data.deleteQuery())
+	_, err := r.db.ExecContext(ctx, data.deleteQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete database, got error: %s", err))
 		return

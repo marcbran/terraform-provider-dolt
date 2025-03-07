@@ -97,13 +97,13 @@ func (r *TableResource) Create(ctx context.Context, req resource.CreateRequest, 
 		return
 	}
 
-	_, err = tx.Exec(data.useQuery())
+	_, err = tx.ExecContext(ctx, data.useQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create table, got error: %s", err))
 		return
 	}
 
-	_, err = tx.Exec(data.createQuery())
+	_, err = tx.ExecContext(ctx, data.createQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create table, got error: %s", err))
 		return
@@ -152,13 +152,13 @@ func (r *TableResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 		return
 	}
 
-	_, err = tx.Exec(data.useQuery())
+	_, err = tx.ExecContext(ctx, data.useQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete table, got error: %s", err))
 		return
 	}
 
-	_, err = tx.Exec(data.deleteQuery())
+	_, err = tx.ExecContext(ctx, data.deleteQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete table, got error: %s", err))
 		return

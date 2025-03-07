@@ -168,13 +168,13 @@ func (r *RowSetResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	_, err = tx.Exec(data.useQuery())
+	_, err = tx.ExecContext(ctx, data.useQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s", err))
 		return
 	}
 
-	_, err = tx.Exec(data.upsertQuery())
+	_, err = tx.ExecContext(ctx, data.upsertQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s", err))
 		return
@@ -216,13 +216,13 @@ func (r *RowSetResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	_, err = tx.Exec(data.useQuery())
+	_, err = tx.ExecContext(ctx, data.useQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update row set, got error: %s", err))
 		return
 	}
 
-	_, err = tx.Exec(data.upsertQuery())
+	_, err = tx.ExecContext(ctx, data.upsertQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update row set, got error: %s", err))
 		return
@@ -230,7 +230,7 @@ func (r *RowSetResource) Update(ctx context.Context, req resource.UpdateRequest,
 
 	pruneQuery := data.pruneQuery(state)
 	if pruneQuery != "" {
-		_, err = tx.Exec(pruneQuery)
+		_, err = tx.ExecContext(ctx, pruneQuery)
 		if err != nil {
 			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update row set, got error: %s", err))
 			return
@@ -262,13 +262,13 @@ func (r *RowSetResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		return
 	}
 
-	_, err = tx.Exec(data.useQuery())
+	_, err = tx.ExecContext(ctx, data.useQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete row set, got error: %s", err))
 		return
 	}
 
-	_, err = tx.Exec(data.deleteQuery())
+	_, err = tx.ExecContext(ctx, data.deleteQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete row set, got error: %s", err))
 		return

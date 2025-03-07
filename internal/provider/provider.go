@@ -68,7 +68,7 @@ func (p *DoltProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 		return
 	}
 
-	_, err = db.Exec("SET @@dolt_transaction_commit=1")
+	_, err = db.ExecContext(ctx, "SET @@dolt_transaction_commit=1")
 	if err != nil {
 		return
 	}

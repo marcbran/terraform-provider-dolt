@@ -97,13 +97,13 @@ func (r *ViewResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
-	_, err = tx.Exec(data.useQuery())
+	_, err = tx.ExecContext(ctx, data.useQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create view, got error: %s", err))
 		return
 	}
 
-	_, err = tx.Exec(data.createUpdateQuery())
+	_, err = tx.ExecContext(ctx, data.createUpdateQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create view, got error: %s", err))
 		return
@@ -141,13 +141,13 @@ func (r *ViewResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 
-	_, err = tx.Exec(data.useQuery())
+	_, err = tx.ExecContext(ctx, data.useQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update view, got error: %s", err))
 		return
 	}
 
-	_, err = tx.Exec(data.createUpdateQuery())
+	_, err = tx.ExecContext(ctx, data.createUpdateQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update view, got error: %s", err))
 		return
@@ -175,13 +175,13 @@ func (r *ViewResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		return
 	}
 
-	_, err = tx.Exec(data.useQuery())
+	_, err = tx.ExecContext(ctx, data.useQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete view, got error: %s", err))
 		return
 	}
 
-	_, err = tx.Exec(data.deleteQuery())
+	_, err = tx.ExecContext(ctx, data.deleteQuery())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete view, got error: %s", err))
 		return
