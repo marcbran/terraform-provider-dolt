@@ -88,7 +88,7 @@ func (d *DatabaseDataSource) Read(ctx context.Context, req datasource.ReadReques
 			return
 		}
 		if name != data.Name.ValueString() {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Expecte database name %s to be %s", name, data.Name.ValueString()))
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Expected database name %s to be %s", name, data.Name.ValueString()))
 			return
 		}
 	}

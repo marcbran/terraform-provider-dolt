@@ -30,6 +30,10 @@ func (m DatabaseResourceModel) createQuery() string {
 	return fmt.Sprintf("CREATE DATABASE %s", m.Name.ValueString())
 }
 
+func (m DatabaseResourceModel) readQuery() string {
+	return fmt.Sprintf("SHOW DATABASES LIKE '%s'", m.Name.ValueString())
+}
+
 func (m DatabaseResourceModel) deleteQuery() string {
 	return fmt.Sprintf("DROP DATABASE %s", m.Name.ValueString())
 }
@@ -92,6 +96,28 @@ func (r *DatabaseResource) Read(ctx context.Context, req resource.ReadRequest, r
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	result, err := r.db.QueryContext(ctx, data.readQuery())
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read database, got error: %s", err))
+		return
+	}
+	if !result.Next() {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Cannot find database with name %s", data.Name.ValueString()))
+		return
+	}
+	for result.Next() {
+		var name string
+		err := result.Scan(&name)
+		if err != nil {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read database, got error: %s", err))
+			return
+		}
+		if name != data.Name.ValueString() {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Expected database name %s to be %s", name, data.Name.ValueString()))
+			return
+		}
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
