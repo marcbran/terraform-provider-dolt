@@ -52,3 +52,16 @@ EOF
 - `database` (String) Name of the database that contains the table
 - `name` (String) Name of the table, not confirming equality with table created by query
 - `query` (String) Query to create the table
+
+### Read-Only
+
+- `columns` (Attributes List) Table columns (see [below for nested schema](#nestedatt--columns))
+
+<a id="nestedatt--columns"></a>
+### Nested Schema for `columns`
+
+Read-Only:
+
+- `key` (String)
+- `name` (String)
+- `type` (String)
