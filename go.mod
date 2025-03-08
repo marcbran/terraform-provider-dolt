@@ -1,6 +1,7 @@
 module terraform-provider-dolt
 
-go 1.22.2
+go 1.22.7
+
 toolchain go1.24.0
 
 require (
