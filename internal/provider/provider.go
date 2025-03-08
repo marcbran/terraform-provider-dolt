@@ -11,6 +11,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"os"
+	"path/filepath"
 )
 
 var _ provider.Provider = &DoltProvider{}
@@ -20,14 +22,19 @@ type DoltProvider struct {
 	version string
 }
 
+// DoltProviderModel TODO maybe path should be part of a resource rather than a provider config?
 type DoltProviderModel struct {
 	Path  types.String `tfsdk:"path"`
 	Name  types.String `tfsdk:"name"`
 	Email types.String `tfsdk:"email"`
 }
 
-func (m DoltProviderModel) databaseUrl() string {
-	return fmt.Sprintf("file://%s?commitname=%s&commitemail=%s", m.Path.ValueString(), m.Name.ValueString(), m.Email.ValueString())
+func (m DoltProviderModel) databaseUrl() (string, error) {
+	path, err := filepath.Abs(m.Path.ValueString())
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("file://%s?commitname=%s&commitemail=%s", path, m.Name.ValueString(), m.Email.ValueString()), nil
 }
 
 func (p *DoltProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -63,8 +70,21 @@ func (p *DoltProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 		return
 	}
 
-	db, err := sql.Open("dolt", data.databaseUrl())
+	_, err := os.Stat(data.Path.ValueString())
+	if os.IsNotExist(err) {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to configure provider, path doesn't exist: %s", data.Path.ValueString()))
+		return
+	}
+
+	url, err := data.databaseUrl()
 	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to configure provider, cannot produce database url for path: %s", data.Path.ValueString()))
+		return
+	}
+
+	db, err := sql.Open("dolt", url)
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to configure provider, cannot open database: %s", err))
 		return
 	}
 
