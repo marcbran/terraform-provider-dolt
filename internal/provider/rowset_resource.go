@@ -57,6 +57,9 @@ func (m RowSetResourceModel) upsertQuery() string {
 			multipleValues = append(multipleValues, valuesString)
 		}
 	}
+	if len(multipleValues) == 0 {
+		return ""
+	}
 	multipleValuesString := strings.Join(multipleValues, ", ")
 	var updateColumns []string
 	for _, c := range m.Columns.Elements() {
@@ -90,6 +93,9 @@ func (m RowSetResourceModel) deleteQuery() string {
 	var uniqueValues []string
 	for key := range m.Values.Elements() {
 		uniqueValues = append(uniqueValues, fmt.Sprintf("\"%s\"", key))
+	}
+	if len(uniqueValues) == 0 {
+		return ""
 	}
 	uniqueValuesString := strings.Join(uniqueValues, ", ")
 	query := fmt.Sprintf(`DELETE FROM %s WHERE %s IN (%s);`,
@@ -174,10 +180,13 @@ func (r *RowSetResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	_, err = tx.ExecContext(ctx, data.upsertQuery())
-	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s", err))
-		return
+	upsertQuery := data.upsertQuery()
+	if upsertQuery != "" {
+		_, err = tx.ExecContext(ctx, upsertQuery)
+		if err != nil {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create row set, got error: %s", err))
+			return
+		}
 	}
 
 	err = tx.Commit()
@@ -222,10 +231,13 @@ func (r *RowSetResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	_, err = tx.ExecContext(ctx, data.upsertQuery())
-	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update row set, got error: %s", err))
-		return
+	upsertQuery := data.upsertQuery()
+	if upsertQuery != "" {
+		_, err = tx.ExecContext(ctx, upsertQuery)
+		if err != nil {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update row set, got error: %s", err))
+			return
+		}
 	}
 
 	pruneQuery := data.pruneQuery(state)
@@ -268,10 +280,13 @@ func (r *RowSetResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		return
 	}
 
-	_, err = tx.ExecContext(ctx, data.deleteQuery())
-	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete row set, got error: %s", err))
-		return
+	deleteQuery := data.deleteQuery()
+	if deleteQuery != "" {
+		_, err = tx.ExecContext(ctx, deleteQuery)
+		if err != nil {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete row set, got error: %s", err))
+			return
+		}
 	}
 
 	err = tx.Commit()

@@ -32,8 +32,28 @@ func TestAccRowSetResource(t *testing.T) {
 					testAccRowSetResourceConfigOne(),
 				Check: resource.ComposeAggregateTestCheckFunc(),
 			},
+			{
+				Config: testAccProviderConfig() +
+					testAccDatabaseResourceConfig() +
+					testAccTableResourceConfig() +
+					testAccRowSetResourceConfigZero(),
+				Check: resource.ComposeAggregateTestCheckFunc(),
+			},
 		},
 	})
+}
+
+func testAccRowSetResourceConfigZero() string {
+	return `
+resource "dolt_rowset" "test" {
+  database = dolt_database.test.name
+  table    = dolt_table.test.name
+
+  columns       = ["id", "name"]
+  unique_column = "id"
+  values        = {}
+}
+`
 }
 
 func testAccRowSetResourceConfigOne() string {
